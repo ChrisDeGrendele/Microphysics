@@ -1,9 +1,30 @@
+# 20.10
+
+   * An option to use NSE instead of integrating the reaction
+     network has been added to the aprox19 network. (#332)
+
+   * The BS integrator no longer supports simplified-SDC (#393)
+
+   * The triple_alpha_plus_cago network switch to using binding
+     energies in MeV, consistent with the aprox nets (#354)
+
 # 20.09
+
+   * Unit tests now write a job_info file (#383)
+
+   * A new single-zone EOS test routine was created as unit_test/eos_cell
+     (#382)
+
+   * The gamma_law eos (not gamma_law_general) now fills the sound speed,
+     entropy, and derivatives for more inputs (#374)
+
+   * The rprox network now has screening (#377)
 
    * The NETWORK_PROPERTIES file was split to put the number of
      auxiliary species into its own file, NAUX_NETWORK.  This allows
      us to put if-logic into the file to choose the number of
      auxiliary quantities based on make setting (like USE_NSE).
+     (#370)
 
 # 20.08
 
