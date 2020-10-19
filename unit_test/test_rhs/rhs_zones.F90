@@ -10,7 +10,8 @@ module react_zones_module
   use extern_probin_module
   use util_module
   use actual_rhs_module
-
+  use numerical_jac_module, only: numerical_jac, test_numerical_jac
+  
   implicit none
 
 contains
@@ -106,8 +107,20 @@ contains
              burn_state % self_heat = .true.
 
              call actual_rhs(burn_state, ydot)
-             call actual_jac(burn_state, jac)
 
+             call test_numerical_jac(burn_state)
+             
+             if (jacobian == 1) then
+                call actual_jac(burn_state, jac)
+             else
+                call numerical_jac(burn_state, jac)
+                !numerical_jac returns units in X
+                !so convert to Y to compare with actual_jac
+                do n = 1, nspec
+                   jac(n,:) = jac(n,:) * aion_inv(n)
+                   jac(:,n) = jac(:,n) * aion(n)
+             endif
+             
              do j = 1, nspec
                 state(ii, jj, kk, p % ispec + j - 1) = ydot(j)
              enddo
