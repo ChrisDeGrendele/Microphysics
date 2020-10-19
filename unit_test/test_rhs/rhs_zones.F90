@@ -119,6 +119,7 @@ contains
                 do n = 1, nspec
                    jac(n,:) = jac(n,:) * aion_inv(n)
                    jac(:,n) = jac(:,n) * aion(n)
+                enddo
              endif
              
              do j = 1, nspec
