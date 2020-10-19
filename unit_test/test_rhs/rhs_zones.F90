@@ -10,7 +10,7 @@ module react_zones_module
   use extern_probin_module
   use util_module
   use actual_rhs_module
-  use numerical_jac_module, only: numerical_jac, test_numerical_jac
+  use numerical_jac_module, only: numerical_jac
   
   implicit none
 
@@ -108,8 +108,6 @@ contains
 
              call actual_rhs(burn_state, ydot)
 
-             call test_numerical_jac(burn_state)
-             
              if (jacobian == 1) then
                 call actual_jac(burn_state, jac)
              else
