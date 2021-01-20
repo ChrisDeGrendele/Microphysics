@@ -14,6 +14,7 @@
 #include <rate_type.H>
 #include <screen.H>
 #include <temperature_integration.H>
+#include <fundamental_constants.H>
 
 using namespace amrex;
 using namespace ArrayUtil;
@@ -236,7 +237,7 @@ void make_rates (const Real& temp, const Real& dens,
 
 
 AMREX_GPU_HOST_DEVICE AMREX_INLINE
-void get_rates (burn_t& state, rate_t& rr)
+void get_rates (burn_t& state, Array1D<rate_t, 1, Rates::NumGroups>& rr)
 {
     using namespace Rates;
 
@@ -254,11 +255,9 @@ void get_rates (burn_t& state, rate_t& rr)
     screen(temp, dens, ymol, rates, dratesdt);
 
     for (int i = 1; i <= NumRates; ++i) {
-        rr.rates(1, i) = rates(i);
-        rr.rates(2, i) = dratesdt(i);
+        rr(1).rates(i) = rates(i);
+        rr(2).rates(i) = dratesdt(i);
     }
-
-    rr.T_eval = temp;
 }
 
 
@@ -271,8 +270,9 @@ void ener_gener_rate (T& dydt, Real& enuc)
     enuc = 0.0_rt;
 
     for (int i = 1; i <= NumSpec; ++i) {
-        enuc -= dydt(i) * aion[i-1] * ebin(i);
+        enuc += dydt(i) * bion(i);
     }
+    enuc *= C::MeV2eV * C::ev2erg * C::n_A;
 }
 
 
@@ -317,12 +317,12 @@ void actual_rhs (burn_t& state, Array1D<Real, 1, neqs>& ydot)
     // set up the species ODEs for the reaction network
     // species inputs are in molar fractions but come out in mass fractions
 
-    rate_t rr;
+    Array1D<rate_t, 1, Rates::NumGroups> rr;
     get_rates(state, rr);
 
     Array1D<Real, 1, NumRates> rates;
     for (int i = 1; i <= NumRates; ++i) {
-        rates(i) = rr.rates(1, i);
+        rates(i) = rr(1).rates(i);
     }
 
     Array1D<Real, 1, NumSpec> yderivs;
@@ -336,7 +336,9 @@ void actual_rhs (burn_t& state, Array1D<Real, 1, neqs>& ydot)
 
     ener_gener_rate(ydot, ydot(net_ienuc));
 
-    temperature_rhs(state, ydot);
+#ifdef STRANG
+    ydot(net_itemp) = temperature_rhs(state, ydot(net_ienuc));
+#endif
 }
 
 
@@ -347,13 +349,13 @@ void actual_jac (burn_t& state, MatrixType& jac)
     using namespace Species;
     using namespace Rates;
 
-    rate_t rr;
+    Array1D<rate_t, 1, Rates::NumGroups> rr;
     get_rates(state, rr);
 
     Array1D<Real, 1, NumRates> rates, dratesdt;
     for (int i = 1; i <= NumRates; ++i) {
-        rates(i)    = rr.rates(1, i);
-        dratesdt(i) = rr.rates(2, i);
+        rates(i)    = rr(1).rates(i);
+        dratesdt(i) = rr(2).rates(i);
     }
 
     // initialize

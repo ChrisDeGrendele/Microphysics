@@ -12,7 +12,7 @@ using namespace amrex;
 void actual_rhs_init ();
 
 AMREX_GPU_HOST_DEVICE AMREX_INLINE
-void evaluate_rates(burn_t& state, rate_t& rr)
+void evaluate_rates(burn_t& state, Array1D<rate_t, 1, Rates::NumGroups>& rr)
 {
     using namespace Species;
 
@@ -57,12 +57,8 @@ void evaluate_rates(burn_t& state, rate_t& rr)
 
     // Save the rates
 
-    rr.rates(1, 1)  = rate;
-    rr.rates(2, 1)  = dratedt;
-    rr.rates(3, 1)  = sc1212;
-    rr.rates(4, 1)  = dsc1212dt;
-
-    rr.T_eval = temp;
+    rr(1).rates(1)  = sc1212 * rate;
+    rr(2).rates(1)  = dsc1212dt * rate + sc1212 * dratedt;
 }
 
 
@@ -93,7 +89,7 @@ void actual_rhs (burn_t& state, Array1D<Real, 1, neqs>& ydot)
 {
     using namespace Species;
 
-    rate_t rr;
+    Array1D<rate_t, 1, Rates::NumGroups> rr;
     evaluate_rates(state, rr);
 
     // Now get the data from the state.
@@ -101,10 +97,7 @@ void actual_rhs (burn_t& state, Array1D<Real, 1, neqs>& ydot)
     Real temp = state.T;
     Real dens = state.rho;
 
-    Real rate      = rr.rates(1, 1);
-    Real dratedt   = rr.rates(2, 1);
-    Real sc1212    = rr.rates(3, 1);
-    Real dsc1212dt = rr.rates(4, 1);
+    Real rate = rr(1).rates(1);
 
     // The change in number density of C12 is
     // d(n12)/dt = - 2 * 1/2 (n12)**2 <sigma v>
@@ -132,9 +125,9 @@ void actual_rhs (burn_t& state, Array1D<Real, 1, neqs>& ydot)
     // The quantity [N_A <sigma v>] is what is tabulated in Caughlin and Fowler.
 
     Real xc12tmp = amrex::max(state.xn[C12-1], 0.0_rt);
-    ydot(C12)  = -(1.0_rt / 12.0_rt) * dens * sc1212 * rate * xc12tmp * xc12tmp;
+    ydot(C12)  = -(1.0_rt / 12.0_rt) * dens * rate * xc12tmp * xc12tmp;
     ydot(O16)  = 0.0_rt;
-    ydot(Mg24) = (1.0_rt / 12.0_rt) * dens * sc1212 * rate * xc12tmp * xc12tmp;
+    ydot(Mg24) = (1.0_rt / 12.0_rt) * dens * rate * xc12tmp * xc12tmp;
 
     // Convert back to molar form
 
@@ -144,9 +137,11 @@ void actual_rhs (burn_t& state, Array1D<Real, 1, neqs>& ydot)
 
     ener_gener_rate(ydot(C12), ydot(net_ienuc));
 
+#ifdef STRANG
     // Do the temperature equation explicitly here
 
-    temperature_rhs(state, ydot);
+    ydot(net_itemp) = temperature_rhs(state, ydot(net_ienuc));
+#endif
 }
 
 
@@ -156,29 +151,26 @@ void actual_jac (burn_t& state, MatrixType& jac)
 {
     using namespace Species;
 
-    rate_t rr;
+    Array1D<rate_t, 1, Rates::NumGroups> rr;
     evaluate_rates(state, rr);
 
     // Get data from the state
 
     Real dens     = state.rho;
 
-    Real rate     = rr.rates(1, 1);
-    Real dratedt  = rr.rates(2, 1);
-    Real scorr    = rr.rates(3, 1);
-    Real dscorrdt = rr.rates(4, 1);
+    Real rate     = rr(1).rates(1);
+    Real dratedt  = rr(2).rates(1);
     Real xc12tmp  = amrex::max(state.xn[C12-1], 0.0_rt);
 
     // initialize
     jac.zero();
 
     // carbon jacobian elements
-    jac(C12, C12) = -(1.0_rt / 6.0_rt) * dens * scorr * rate * xc12tmp;
+    jac(C12, C12) = -(1.0_rt / 6.0_rt) * dens * rate * xc12tmp;
     jac(Mg24, C12) = -jac(C12, C12);
 
     // add the temperature derivatives: df(y_i) / dT
-    jac(C12, net_itemp)  = -(1.0_rt / 12.0_rt) * (dens * rate * xc12tmp * xc12tmp * dscorrdt +
-                                                  dens * scorr * xc12tmp * xc12tmp * dratedt);
+    jac(C12, net_itemp)  = -(1.0_rt / 12.0_rt) * (dens * dratedt * xc12tmp * xc12tmp);
 
     // Convert back to molar form
     // Note that the factor of 1/A cancels in the (C12,C12) Jacobian element,
@@ -192,6 +184,7 @@ void actual_jac (burn_t& state, MatrixType& jac)
     ener_gener_rate(jac(C12, net_itemp), jac(net_ienuc, net_itemp));
 
     temperature_jac(state, jac);
+
 }
 
 #endif

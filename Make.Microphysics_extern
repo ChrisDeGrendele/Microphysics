@@ -1,6 +1,25 @@
 # This is the main include makefile for applications that want to use Microphysics
 # You should set NETWORK_OUTPUT_PATH before including this file
 
+ifeq ($(USE_SIMPLIFIED_SDC), TRUE)
+  DEFINES += -DSIMPLIFIED_SDC
+else ifeq ($(USE_TRUE_SDC), TRUE)
+  DEFINES += -DTRUE_SDC
+else
+  DEFINES += -DSTRANG
+endif
+
+USE_FORT_EOS ?= TRUE
+ifeq ($(USE_FORT_EOS),TRUE)
+  DEFINES += -DMICROPHYSICS_FORT_EOS
+endif
+
+USE_CXX_REACTIONS ?= FALSE
+ifeq ($(USE_CXX_REACTIONS),TRUE)
+  DEFINES += -DCXX_REACTIONS
+endif
+
+
 EOS_PATH := $(MICROPHYSICS_HOME)/EOS/$(strip $(EOS_DIR))
 NETWORK_PATH := $(MICROPHYSICS_HOME)/networks/$(strip $(NETWORK_DIR))
 ifeq ($(USE_CONDUCTIVITY), TRUE)
@@ -50,6 +69,17 @@ ifeq ($(findstring gamma_law_general, $(EOS_DIR)), gamma_law_general)
    DEFINES += -DEOS_GAMMA_LAW_GENERAL
 endif
 
+# NSE networks need the table
+ifeq ($(USE_NSE),TRUE)
+  ifeq ($(findstring aprox19, $(NETWORK_DIR)), aprox19)
+     all: nsetable
+  endif
+endif
+
+nsetable:
+	@if [ ! -f nse19.tbl ]; then echo Linking nse19.tbl; ln -s $(NETWORK_PATH)/nse19.tbl .; fi
+
+
 # include the network
 EXTERN_CORE += $(NETWORK_PATH)
 
@@ -74,6 +104,8 @@ ifeq ($(USE_RAD), TRUE)
    ifeq ($(Opacity_dir), null)
      $(error The null opacity directory has been removed, please update to rad_power_law)
    endif
+   EXTERN_CORE += $(MICROPHYSICS_HOME)/opacity
+
    OPAC_PATH := $(MICROPHYSICS_HOME)/opacity/$(Opacity_dir)
    EXTERN_CORE += $(OPAC_PATH)
 endif

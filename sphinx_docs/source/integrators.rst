@@ -19,7 +19,6 @@ The equations we integrate to do a nuclear burn are:
    \frac{dT}{dt} =\frac{\edot}{c_x} .
    :label: eq:temp_integrate
 
-
 Here, :math:`X_k` is the mass fraction of species :math:`k`, :math:`\enuc` is the specifc
 nuclear energy created through reactions, :math:`T` is the
 temperature [1]_ , and :math:`c_x` is the specific heat for the
@@ -52,6 +51,13 @@ of the temperature equation given :math:`\dot{e}`, but these calls
 are always explicitly done by the individual networks rather than
 being handled by the integration backend. This allows you to write a
 new network that defines the RHS in whatever way you like.
+
+.. index:: react_boost
+
+The standard reaction rates can all be boosted by a constant factor by
+setting the ``react_boost`` runtime parameter.  This will simply
+multiply the righthand sides of each species evolution equation (and
+appropriate Jacobian terms) by the specified constant amount.
 
 Interfaces
 ==========
@@ -219,42 +225,6 @@ array indexed from ``1`` to ``VODE_NEQS`` in each dimension.
 Thermodynamics and :math:`T` Evolution
 ======================================
 
-Burning Mode
-------------
-
-There are several different modes under which the burning can be done, set
-via the burning_mode runtime parameter:
-
-* ``burning_mode`` = 0 : hydrostatic burning
-
-  :math:`\rho`, :math:`T` remain constant
-
-* ``burning_mode = 1`` : self-heating burn
-
-  :math:`T` evolves with the burning according to the temperature
-  evolution equation. This is the “usual” way of thinking of the
-  burning—all three equations (:eq:`eq:spec_integrate`,
-  :eq:`eq:enuc_integrate`, and :eq:`eq:temp_integrate`) are solved
-  simultaneously.
-
-* ``burning_mode = 2`` : hybrid approach
-
-  This implements an approach from :cite:`raskin:2010` in which we do
-  a hydrostatic burn everywhere, but if we get a negative energy
-  change, the burning is redone in self-heating mode (the logic being
-  that a negative energy release corresponds to NSE conditions)
-
-* ``burning_mode = 3`` : suppressed burning
-
-  This does a self-heating burn, but limits all values of the RHS by a
-  factor :math:`L = \text{min}(1, f_s (e / \dot{e}) / t_s)`, such that
-  :math:`\dot{e} = f_s\, e / t_s`, where :math:`f_s` is a safety
-  factor, set via burning_mode_factor.
-
-When the integration is started, the burning mode is used to identify
-whether temperature evolution should take place. This is used to
-set the self_heat field in the burn_t type passed
-into the RHS and Jacobian functions.
 
 EOS Calls
 ---------
@@ -319,7 +289,6 @@ The C++ implementation is in ``integration/utils/temperature_integration.H``:
 
      AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
      void temperature_rhs (burn_t& state, Array1D<Real, 1, neqs>& ydot)
-
 
 We need the specific heat, :math:`c_x`. Note that because we are evaluating
 the temperature evolution independent of any hydrodynamics, we do not
@@ -420,9 +389,15 @@ type required by the ``actual_rhs`` and ``actual_jac`` routine.
 
 The name of the integrator can be selected at compile time using
 the ``INTEGRATOR_DIR`` variable in the makefile. Presently,
-the allowed options are BS and VODE.
+the allowed options are:
 
-We recommend that you use the VODE solver (:cite:`vode`), as it is the most
+* ``ForwardEuler``: an explicit first-order forward-Euler method.  This is
+  meant for testing purposes only.
+
+* ``VODE``: the VODE (:cite:`vode`) integration package.  We ported this
+  integrator to C++ and removed the non-stiff integration code paths.
+
+We recommend that you use the VODE solver, as it is the most
 robust and has both Fortran and C++ implementations.
 
 .. note::
@@ -462,7 +437,6 @@ so :math:`10^{-9}` should be used as the default tolerance in future simulations
 
    Relative error of runs with varying tolerances as compared
    to a run with an ODE tolerance of :math:`10^{-12}`.
-
 
 The integration tolerances for the burn are controlled by
 ``rtol_spec``, ``rtol_enuc``, and ``rtol_temp``,
@@ -579,7 +553,6 @@ The basic outline of this routine is:
 #. convert back to the integrator’s internal representation by calling ``burn_to_vode``
 
 
-
 Jacobian wrapper
 ^^^^^^^^^^^^^^^^
 
@@ -664,7 +637,6 @@ The basic flow of the ``integrator()`` routine mirrors the Fortran one.
 
 #. normalize the abundances so they sum to 1.
 
-.. _sec:BS:
 
 Righthand side wrapper
 ^^^^^^^^^^^^^^^^^^^^^^
@@ -707,83 +679,7 @@ Jacobian wrapper
 
 #. call ``burn_to_vode`` to update the ``dvode_t`` 
 
-BS
---
 
-This integrator is based on the stiff-ODE methods from :cite:`NR`, but
-written with reaction network integration in mind (so it knows about
-species), and in a modular / threadsafe fashion to work with our data
-structures. This integrator appears quite robust.
-
-bs_t data structure.
-^^^^^^^^^^^^^^^^^^^^
-
-The ``bs_t`` type is the main data structure for the BS integrator.
-This holds the integration variables (as ``y(1:neqs)``) and data
-associated with the timestepping. It also holds a ``burn_t`` type
-as ``bs_t % burn_s``. This component is used to interface with
-the networks. The conversion routines ``bs_to_burn`` and
-``burn_to_bs`` simply sync up ``bs_t % y(:)`` and ``bs_t % burn_s``.
-
-The ``upar(:)`` component contains the meta-data that is not held in
-the ``burn_t`` but nevertheless is associate with the current
-state. This is an array that can be indexed via the integers define
-in the ``rpar_indices`` module. Note that because the ``bs_t``
-contains its own ``burn_t`` type, the BS integrator does not need
-as much meta-data as some other integrators. The fields of upar
-are:
-
-* ``bs_t % upar(irp_t_sound)``
-
-  This is the sound-crossing time for a zone.
-
-* ``bs_t % upar(irp_t0)``
-
-  This is the simulation time at the start of integration. This can be
-  used as an offset to convert between simulation time and integration
-  time (we always start the integration at :math:`t = 0`).
-
-Error criteria.
-^^^^^^^^^^^^^^^
-
-There is a single relative tolerance used for all ODEs, instead of a
-separate one for species, temperature, and energy, it is simply the
-maximum of {``rtol_spec``, ``rtol_temp``, ``rtol_enuc``}. The absolute
-tolerance parameters are ignored.
-
-A relative tolerance needs a metric against which to compare. BS
-has two options, chosen by the runtime parameter scaling_method.
-Considering a vector :math:`{\bf y} = (Y_k, e, T)^\intercal`, the scales
-to compare against, :math:`{\bf y}_\mathrm{scal}`, are:
-
-* ``scaling_method`` = 1 :
-
-  .. math:: {\bf y}_\mathrm{scal} = |{\bf y}| + \Delta t  |\dot{\bf y}| + \epsilon
-
-  This is an extrapolation of :math:`{\bf y}` in time. The quantity
-  :math:`\epsilon` is a small number (hardcoded to :math:`10^{-30}`)
-  to prevent any scale from being zero.
-
-* ``scaling_method`` = 2 :
-
-  .. math::
-     ({y}_\mathrm{scal})_j = \max \left (|y_j|, \mathtt{ode\_scale\_floor} \right )
-
-  for :math:`j = 1, \ldots, {\tt neq}`.  Here, ``ode_scale_floor`` is
-  a runtime parameter that sets a lower-limit to the scaling for each
-  variable in the vector :math:`{\bf y}_\mathrm{scal}`. The default
-  value is currently :math:`10^{-6}` (although any network can
-  override this using priorities). The effect of this scaling is that
-  species with an abundance :math:`\ll` ``ode_scal_floor`` will not be
-  used as strongly in assessing the accuracy of a step.
-
-These correspond to the options presented in :cite:`NR`.
-
-A final option, use_timestep_estimator enables the
-timestep estimator from VODE to determine a good starting
-timestep for integration.
-
-.. _sec:VODE:
 
 
 Retries

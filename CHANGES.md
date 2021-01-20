@@ -1,9 +1,63 @@
+# 21.02
+
+   * Runtime parameters can now be set in the inputs file instead of
+     the probin file (and then they are read in by C++ ParmParse).  If
+     a parameter is set in both places, then the inputs value is used.
+     (#505)
+
+   * Fortran support for simplified-SDC in the VODE integrator has
+     been removed. (#492)
+
+# 21.01
+
+   * Microphysics now requires C++17 (gcc >= 7, CUDA >= 11). (#485)
+
+   * The BS integrator was removed.  This was Fortran only, doesn't support
+     SDC integration, and not well used. (#488)
+
+# 20.12
+
+   * The default absolute tolerance for species (atol_spec) has been
+     increased to 1.e-8 (from 1.e-12). (#422)
+
+   * An interface has been added for C++ integrators to call the RHS
+     from a network that only has a Fortran implementation. This allows
+     the use of USE_CXX_REACTIONS = TRUE for any network (however, CUDA
+     is not currently supported for this case). (#419)
+
+# 20.11
+
+   * The aprox19 + NSE network was ported to C++ (#362)
+
+   * The simplified-SDC code path was ported to C++ (#389)
+
+# 20.10
+
+   * An option to use NSE instead of integrating the reaction
+     network has been added to the aprox19 network. (#332)
+
+   * The BS integrator no longer supports simplified-SDC (#393)
+
+   * The triple_alpha_plus_cago network switch to using binding
+     energies in MeV, consistent with the aprox nets (#354)
+
 # 20.09
+
+   * Unit tests now write a job_info file (#383)
+
+   * A new single-zone EOS test routine was created as unit_test/eos_cell
+     (#382)
+
+   * The gamma_law eos (not gamma_law_general) now fills the sound speed,
+     entropy, and derivatives for more inputs (#374)
+
+   * The rprox network now has screening (#377)
 
    * The NETWORK_PROPERTIES file was split to put the number of
      auxiliary species into its own file, NAUX_NETWORK.  This allows
      us to put if-logic into the file to choose the number of
      auxiliary quantities based on make setting (like USE_NSE).
+     (#370)
 
 # 20.08
 

@@ -2,8 +2,16 @@
 #define _vode_dvjac_H_
 
 #include <vode_type.H>
-#include <vode_linpack.H>
+#include <linpack.H>
+#ifdef STRANG
 #include <vode_rhs.H>
+#endif
+#ifdef SIMPLIFIED_SDC
+#include <vode_rhs_simplified_sdc.H>
+#endif
+#ifdef TRUE_SDC
+#include <vode_rhs_true_sdc.H>
+#endif
 
 AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
 void dvjac (IArray1D& pivot, int& IERPJ, burn_t& state, dvode_t& vstate)
@@ -158,7 +166,7 @@ void dvjac (IArray1D& pivot, int& IERPJ, burn_t& state, dvode_t& vstate)
 
 #ifndef NETWORK_SOLVER
     int IER;
-    dgefa(vstate.jac, pivot, IER);
+    dgefa<VODE_NEQS>(vstate.jac, pivot, IER);
 
     if (IER != 0) {
         IERPJ = 1;

@@ -10,9 +10,6 @@ module cuvode_dvjac_module
 
 contains
 
-#if defined(AMREX_USE_CUDA) && !defined(AMREX_USE_GPU_PRAGMA)
-  attributes(device) &
-#endif
   subroutine dvjac(pivot, IERPJ, vstate)
 
     !$acc routine seq
@@ -26,11 +23,7 @@ contains
     !  coefficient matrix. This is done by DGEFA.
     ! -----------------------------------------------------------------------
 
-#ifdef TRUE_SDC
-    use sdc_vode_rhs_module, only: f_rhs, jac
-#else
     use vode_rhs_module, only: f_rhs, jac
-#endif
 
     implicit none
 
